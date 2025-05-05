@@ -8,8 +8,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// Operations defines common database operations.
-type Operations interface {
+// Postgres defines common database operations.
+type Postgres interface {
 	Select(ctx context.Context, model interface{}, query interface{}, args ...interface{}) error
 	SelectOne(ctx context.Context, model interface{}, query interface{}, args ...interface{}) error
 	Insert(ctx context.Context, model interface{}) error
@@ -19,13 +19,14 @@ type Operations interface {
 	Count(ctx context.Context, model interface{}, query interface{}, args ...interface{}) (int64, error)
 	Exists(ctx context.Context, model interface{}, query interface{}, args ...interface{}) (bool, error)
 	Close() error
+	Instance() *gorm.DB
 }
 
-type Postgres struct {
-	db *gorm.DB
+type Client struct {
+	*gorm.DB
 }
 
-// NewPostgres initializes and returns a new Postgres instance.
+// NewPostgres initializes and returns a new Client instance.
 //
 // Example:
 //
@@ -35,7 +36,7 @@ type Postgres struct {
 //	    log.Fatal(err)
 //	}
 //	defer pg.Close()
-func NewPostgres(cfg *Config) (*Postgres, error) {
+func NewPostgres(cfg *Config) (Postgres, error) {
 	db, err := gorm.Open(postgres.Open(cfg.GetDSN()), &gorm.Config{})
 	if err != nil {
 		log.Printf("failed to connect database: %v", err)
@@ -51,8 +52,13 @@ func NewPostgres(cfg *Config) (*Postgres, error) {
 		return nil, err
 	}
 
+	if cfg.Debug {
+		db = db.Debug()
+		log.Println("GORM debug mode is enabled")
+	}
+
 	log.Println("Successfully connected to PostgresSQL database")
-	return &Postgres{db: db}, nil
+	return &Client{DB: db}, nil
 }
 
 // Select retrieves multiple records.
@@ -64,8 +70,8 @@ func NewPostgres(cfg *Config) (*Postgres, error) {
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
-func (p *Postgres) Select(ctx context.Context, model interface{}, query interface{}, args ...interface{}) error {
-	return p.db.WithContext(ctx).Where(query, args...).Find(model).Error
+func (p *Client) Select(ctx context.Context, model interface{}, query interface{}, args ...interface{}) error {
+	return p.WithContext(ctx).Where(query, args...).Find(model).Error
 }
 
 // SelectOne retrieves a single record.
@@ -79,8 +85,8 @@ func (p *Postgres) Select(ctx context.Context, model interface{}, query interfac
 //	} else if err != nil {
 //	    log.Fatal(err)
 //	}
-func (p *Postgres) SelectOne(ctx context.Context, model interface{}, query interface{}, args ...interface{}) error {
-	return p.db.WithContext(ctx).Where(query, args...).First(model).Error
+func (p *Client) SelectOne(ctx context.Context, model interface{}, query interface{}, args ...interface{}) error {
+	return p.WithContext(ctx).Where(query, args...).First(model).Error
 }
 
 // Insert creates a new record.
@@ -96,8 +102,8 @@ func (p *Postgres) SelectOne(ctx context.Context, model interface{}, query inter
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
-func (p *Postgres) Insert(ctx context.Context, model interface{}) error {
-	return p.db.WithContext(ctx).Create(model).Error
+func (p *Client) Insert(ctx context.Context, model interface{}) error {
+	return p.WithContext(ctx).Create(model).Error
 }
 
 // Update updates existing records.
@@ -112,8 +118,8 @@ func (p *Postgres) Insert(ctx context.Context, model interface{}) error {
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
-func (p *Postgres) Update(ctx context.Context, model interface{}, query interface{}, updates interface{}, args ...interface{}) error {
-	return p.db.WithContext(ctx).Model(model).Where(query, args...).Updates(updates).Error
+func (p *Client) Update(ctx context.Context, model interface{}, query interface{}, updates interface{}, args ...interface{}) error {
+	return p.WithContext(ctx).Model(model).Where(query, args...).Updates(updates).Error
 }
 
 // Delete removes records matching the query.
@@ -124,8 +130,8 @@ func (p *Postgres) Update(ctx context.Context, model interface{}, query interfac
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
-func (p *Postgres) Delete(ctx context.Context, model interface{}, query interface{}, args ...interface{}) error {
-	return p.db.WithContext(ctx).Where(query, args...).Delete(model).Error
+func (p *Client) Delete(ctx context.Context, model interface{}, query interface{}, args ...interface{}) error {
+	return p.WithContext(ctx).Where(query, args...).Delete(model).Error
 }
 
 // DeleteOne deletes the first record matching the query.
@@ -137,12 +143,12 @@ func (p *Postgres) Delete(ctx context.Context, model interface{}, query interfac
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
-func (p *Postgres) DeleteOne(ctx context.Context, model interface{}, query interface{}, args ...interface{}) error {
-	tx := p.db.WithContext(ctx).Where(query, args...).First(model)
+func (p *Client) DeleteOne(ctx context.Context, model interface{}, query interface{}, args ...interface{}) error {
+	tx := p.WithContext(ctx).Where(query, args...).First(model)
 	if tx.Error != nil {
 		return tx.Error
 	}
-	return p.db.WithContext(ctx).Delete(model).Error
+	return p.WithContext(ctx).Delete(model).Error
 }
 
 // Count counts the number of matching records.
@@ -154,9 +160,9 @@ func (p *Postgres) DeleteOne(ctx context.Context, model interface{}, query inter
 //	    log.Fatal(err)
 //	}
 //	log.Printf("Có %d users trên 30 tuổi", count)
-func (p *Postgres) Count(ctx context.Context, model interface{}, query interface{}, args ...interface{}) (int64, error) {
+func (p *Client) Count(ctx context.Context, model interface{}, query interface{}, args ...interface{}) (int64, error) {
 	var count int64
-	err := p.db.WithContext(ctx).Model(model).Where(query, args...).Count(&count).Error
+	err := p.WithContext(ctx).Model(model).Where(query, args...).Count(&count).Error
 	return count, err
 }
 
@@ -173,7 +179,7 @@ func (p *Postgres) Count(ctx context.Context, model interface{}, query interface
 //	} else {
 //	    log.Println("User không tồn tại")
 //	}
-func (p *Postgres) Exists(ctx context.Context, model interface{}, query interface{}, args ...interface{}) (bool, error) {
+func (p *Client) Exists(ctx context.Context, model interface{}, query interface{}, args ...interface{}) (bool, error) {
 	count, err := p.Count(ctx, model, query, args...)
 	return count > 0, err
 }
@@ -182,7 +188,7 @@ func (p *Postgres) Exists(ctx context.Context, model interface{}, query interfac
 //
 // Example:
 //
-//	err := pg.WithTransaction(func(tx *gorm.DB) error {
+//	err := pg.WithTransaction(func(tx *gorm.Instance) error {
 //	    if err := tx.Create(&user).Error; err != nil {
 //	        return err
 //	    }
@@ -191,8 +197,8 @@ func (p *Postgres) Exists(ctx context.Context, model interface{}, query interfac
 //	    }
 //	    return nil
 //	})
-func (p *Postgres) WithTransaction(fn func(tx *gorm.DB) error) error {
-	return p.db.Transaction(fn)
+func (p *Client) WithTransaction(fn func(tx *gorm.DB) error) error {
+	return p.Transaction(fn)
 }
 
 // Close closes the database connection.
@@ -204,20 +210,20 @@ func (p *Postgres) WithTransaction(fn func(tx *gorm.DB) error) error {
 //	        log.Printf("Error closing database: %v", err)
 //	    }
 //	}()
-func (p *Postgres) Close() error {
-	sqlDB, err := p.db.DB()
+func (p *Client) Close() error {
+	sqlDB, err := p.DB.DB()
 	if err != nil {
 		return err
 	}
 	return sqlDB.Close()
 }
 
-// DB returns the underlying *gorm.DB instance.
+// Instance returns the underlying *gorm.DB instance.
 //
 // Example:
 //
-//	db := pg.DB()
+//	db := pg.Instance()
 //	err := db.Exec("RAW SQL HERE").Error
-func (p *Postgres) DB() *gorm.DB {
-	return p.db
+func (p *Client) Instance() *gorm.DB {
+	return p.DB
 }

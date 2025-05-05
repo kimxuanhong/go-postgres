@@ -2,7 +2,9 @@ package postgres
 
 import (
 	"fmt"
+	"log"
 	"os"
+	"strconv"
 )
 
 type Config struct {
@@ -12,6 +14,7 @@ type Config struct {
 	Password string `yaml:"password"`
 	DBName   string `yaml:"dbname"`
 	SSLMode  string `yaml:"sslmode"`
+	Debug    bool   `yaml:"debug"`
 }
 
 func NewConfig() *Config {
@@ -22,7 +25,21 @@ func NewConfig() *Config {
 		Password: getEnv("DB_PASSWORD", "postgres"),
 		DBName:   getEnv("DB_NAME", "postgres"),
 		SSLMode:  getEnv("DB_SSL_MODE", "disable"),
+		Debug:    getEnvAsBool("DB_DEBUG_MODE", true),
 	}
+}
+
+func getEnvAsBool(key string, defaultVal bool) bool {
+	valStr := os.Getenv(key)
+	if valStr == "" {
+		return defaultVal
+	}
+	val, err := strconv.ParseBool(valStr)
+	if err != nil {
+		log.Printf("Invalid value for %s: %s. Using default: %v", key, valStr, defaultVal)
+		return defaultVal
+	}
+	return val
 }
 
 func (c *Config) GetDSN() string {
