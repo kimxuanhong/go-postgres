@@ -13,6 +13,7 @@ type Config struct {
 	User     string `yaml:"user"`
 	Password string `yaml:"password"`
 	DBName   string `yaml:"dbname"`
+	Schema   string `yaml:"schema"`
 	SSLMode  string `yaml:"sslmode"`
 	Debug    bool   `yaml:"debug"`
 }
@@ -24,6 +25,7 @@ func NewConfig() *Config {
 		User:     getEnv("DB_USER", "postgres"),
 		Password: getEnv("DB_PASSWORD", "postgres"),
 		DBName:   getEnv("DB_NAME", "postgres"),
+		Schema:   getEnv("DB_SCHEMA", "public"),
 		SSLMode:  getEnv("DB_SSL_MODE", "disable"),
 		Debug:    getEnvAsBool("DB_DEBUG_MODE", true),
 	}
@@ -43,8 +45,8 @@ func getEnvAsBool(key string, defaultVal bool) bool {
 }
 
 func (c *Config) GetDSN() string {
-	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		c.Host, c.Port, c.User, c.Password, c.DBName, c.SSLMode)
+	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s search_path=%s sslmode=%s",
+		c.Host, c.Port, c.User, c.Password, c.DBName, c.Schema, c.SSLMode)
 }
 
 func getEnv(key, defaultValue string) string {
